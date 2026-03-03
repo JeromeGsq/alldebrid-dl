@@ -3,20 +3,20 @@
 A single bash script to download all files from an [Alldebrid](https://alldebrid.com) magnet — with full directory structure preserved.
 
 ```
-$ ./alldebrid-dl 470037424
+$ alldebrid-dl 470037424
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   Alldebrid Downloader — Magnet #470037424
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Fetching magnet status...
-Magnet ready: Minishoot.Adventures
+Magnet ready: Family-Pictures
 258 file(s) found
-Destination: ~/Downloads/alldebrid_470037424
+Destination: ~/Downloads/Family-Pictures
 
-[1/258] /Windows/Minishoot.exe
+[1/258] DCIM/Camera/2025-02-28 14.43.14.jpg
   OK
-[2/258] /Windows/Minishoot_Data/app.info
+[2/258] DCIM/Camera/2025-02-28 14.43.15.jpg
   OK
 ...
 
@@ -29,6 +29,7 @@ All files downloaded successfully!
 
 - **Preserves directory structure** — files land exactly where they should
 - **Resumes interrupted downloads** — uses `wget --continue`
+- **Auto-configuration** — prompts for your API key on first run and saves it
 - **Single file, zero config** — one script, no frameworks, no bloat
 - **Progress tracking** — real-time progress bar per file
 
@@ -54,29 +55,30 @@ cd alldebrid-dl
 make install
 ```
 
-### Configuration
+## Configuration
+
+On first run, the script will prompt you for your API key and save it to `~/.config/alldebrid-dl/config`.
+
+You can also set it manually:
 
 ```bash
-cp .env.example .env
+mkdir -p ~/.config/alldebrid-dl
+echo 'ALLDEBRID_API_KEY="your_key"' > ~/.config/alldebrid-dl/config
+chmod 600 ~/.config/alldebrid-dl/config
 ```
 
-Edit `.env` with your API key:
-
-```
-ALLDEBRID_API_KEY="your_api_key_here"
-```
-
-> When installed via `make install` or `brew`, the script looks for `.env` in the current directory, so keep it wherever you run the command from.
+Alternatively, the script also reads from a `.env` file in the current directory or an `ALLDEBRID_API_KEY` environment variable.
 
 ## Usage
 
 ```bash
-alldebrid-dl <magnet_id>
+alldebrid-dl <magnet_id> [output_dir]
 ```
 
-The magnet ID is the number shown in your Alldebrid magnet list URL or dashboard.
+- `magnet_id` — the number shown in your Alldebrid magnet list URL or dashboard
+- `output_dir` — optional parent directory (defaults to `~/Downloads`)
 
-Files are downloaded to `~/Downloads/alldebrid_<magnet_id>/`.
+Files are downloaded to `<output_dir>/<magnet_name>/`.
 
 ## How it works
 

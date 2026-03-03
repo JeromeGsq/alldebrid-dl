@@ -1,0 +1,131 @@
+#!/bin/bash
+
+# Alldebrid Magnet Downloader
+# Downloads all files from an Alldebrid magnet while preserving directory structure.
+# Usage: alldebrid-dl <magnet_id>
+
+set -euo pipefail
+
+GREEN='\033[0;32m' YELLOW='\033[1;33m' RED='\033[0;31m' CYAN='\033[0;36m' NC='\033[0m'
+
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/alldebrid-dl"
+CONFIG_FILE="$CONFIG_DIR/config"
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+[[ -f ".env" ]] && source ".env"
+[[ -f "$SCRIPT_DIR/.env" ]] && source "$SCRIPT_DIR/.env"
+[[ -f "$CONFIG_FILE" ]] && source "$CONFIG_FILE"
+
+if [[ -z "${ALLDEBRID_API_KEY:-}" ]]; then
+  echo -e "${YELLOW}No API key found.${NC}"
+  echo -n "Enter your Alldebrid API key: "
+  read -r ALLDEBRID_API_KEY
+  [[ -z "$ALLDEBRID_API_KEY" ]] && { echo -e "${RED}API key cannot be empty.${NC}"; exit 1; }
+  mkdir -p "$CONFIG_DIR"
+  echo "ALLDEBRID_API_KEY=\"$ALLDEBRID_API_KEY\"" > "$CONFIG_FILE"
+  chmod 600 "$CONFIG_FILE"
+  echo -e "${GREEN}API key saved to $CONFIG_FILE${NC}\n"
+fi
+
+API_KEY="$ALLDEBRID_API_KEY"
+MAGNET_ID="${1:?Usage: $0 <magnet_id> [output_dir]}"
+OUTPUT_DIR="${2:-$HOME/Downloads}"
+BASE_URL="https://api.alldebrid.com/v4.1"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${CYAN}  Alldebrid Downloader — Magnet #${MAGNET_ID}${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+for cmd in curl jq wget python3; do
+  command -v "$cmd" &>/dev/null || { echo -e "${RED}Missing dependency: $cmd${NC}"; exit 1; }
+done
+
+# Fetch magnet status
+echo -e "\n${YELLOW}Fetching magnet status...${NC}"
+STATUS=$(curl -s "${BASE_URL}/magnet/status?agent=alldebrid-dl&apikey=${API_KEY}&id=${MAGNET_ID}")
+MAGNET_STATUS=$(echo "$STATUS" | jq -r '.data.magnets.status // empty')
+
+if [[ "$MAGNET_STATUS" != "Ready" ]]; then
+  ERROR_CODE=$(echo "$STATUS" | jq -r '.error.code // empty')
+  ERROR_MSG=$(echo "$STATUS" | jq -r '.error.message // empty')
+  if [[ -n "$ERROR_CODE" ]]; then
+    echo -e "${RED}API error: $ERROR_MSG ($ERROR_CODE)${NC}"
+  else
+    echo -e "${RED}Magnet is not ready (status: $MAGNET_STATUS)${NC}"
+  fi
+  exit 1
+fi
+
+MAGNET_NAME=$(echo "$STATUS" | jq -r '.data.magnets.filename // "download"')
+DEST_DIR="${OUTPUT_DIR}/${MAGNET_NAME}"
+echo -e "${GREEN}Magnet ready: ${MAGNET_NAME}${NC}"
+
+# Extract file paths and links from nested structure
+# Outputs lines of "relative/path/to/file\thttps://link"
+PATH_LINKS=$(echo "$STATUS" | jq -r '
+  def walk(p):
+    p as $path |
+    if .l then (if $path == "" then .n else $path end) + "\t" + .l
+    elif .e then (.e[] | walk(if $path == "" then .n else $path + "/" + .n end))
+    else empty
+    end;
+  .data.magnets.files[] | walk("")
+')
+
+# Debug: show raw extracted data
+if [[ -z "$PATH_LINKS" ]]; then
+  echo -e "${RED}No files could be extracted from the API response.${NC}"
+  echo -e "${YELLOW}Raw files structure:${NC}"
+  echo "$STATUS" | jq '.data.magnets.files'
+  exit 1
+fi
+
+LINK_COUNT=$(echo "$PATH_LINKS" | grep -c . || echo 0)
+echo -e "${GREEN}${LINK_COUNT} file(s) found${NC}"
+echo -e "${YELLOW}Destination: ${DEST_DIR}${NC}\n"
+
+mkdir -p "$DEST_DIR"
+
+# Download each file
+INDEX=0
+ERRORS=0
+
+urlencode() { python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$1"; }
+
+while IFS=$'\t' read -r REL_PATH LINK; do
+  [[ -z "$LINK" ]] && continue
+  INDEX=$((INDEX + 1))
+
+  echo -e "${CYAN}[${INDEX}/${LINK_COUNT}] ${REL_PATH}${NC}"
+
+  UNLOCK=$(curl -s "${BASE_URL}/link/unlock?agent=alldebrid-dl&apikey=${API_KEY}&link=$(urlencode "$LINK")")
+  DL_LINK=$(echo "$UNLOCK" | jq -r '.data.link // empty')
+
+  if [[ -z "$DL_LINK" ]]; then
+    ERROR_MSG=$(echo "$UNLOCK" | jq -r '.error.message // "Unknown error"')
+    echo -e "${RED}  Failed to unlock: $ERROR_MSG${NC}"
+    ERRORS=$((ERRORS + 1))
+    continue
+  fi
+
+  mkdir -p "${DEST_DIR}/$(dirname "$REL_PATH")"
+  OUT_PATH="${DEST_DIR}/${REL_PATH}"
+
+  wget -q --show-progress --continue -O "$OUT_PATH" "$DL_LINK"
+
+  if [[ $? -eq 0 ]]; then
+    echo -e "  ${GREEN}OK${NC}\n"
+  else
+    echo -e "  ${RED}Download failed${NC}\n"
+    ERRORS=$((ERRORS + 1))
+  fi
+done <<< "$PATH_LINKS"
+
+# Summary
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+if [[ $ERRORS -eq 0 ]]; then
+  echo -e "${GREEN}All files downloaded successfully!${NC}"
+else
+  echo -e "${YELLOW}Completed with ${ERRORS} error(s)${NC}"
+fi
+echo -e "${CYAN}Files in: ${DEST_DIR}${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
