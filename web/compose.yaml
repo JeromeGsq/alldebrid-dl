@@ -1,0 +1,12 @@
+services:
+  alldebrid-dl:
+    build: .
+    container_name: alldebrid-dl-web
+    ports:
+      - "8081:8081"
+    volumes:
+      - /mnt/nas/home/Downloads:/downloads
+    environment:
+      - SECRET_KEY=change-me-in-production
+      - DOWNLOAD_DIR=/downloads
+    restart: unless-stopped

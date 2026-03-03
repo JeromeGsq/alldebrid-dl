@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alldebrid-DL{% block title_suffix %}{% endblock %}</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <nav>
+        <a href="/magnets" class="logo">Alldebrid-DL</a>
+        <div class="nav-right">
+            {% if request.session.get('api_key') %}
+            <a href="/magnets">Magnets</a>
+            <a href="/logout" class="btn btn-sm">Déconnexion</a>
+            {% endif %}
+        </div>
+    </nav>
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

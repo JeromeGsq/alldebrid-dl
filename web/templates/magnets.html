@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title_suffix %} — Magnets{% endblock %}
+{% block content %}
+<div class="header-row">
+    <h1>Mes Magnets</h1>
+</div>
+
+<div class="card upload-card">
+    <h2>Ajouter un torrent</h2>
+    <form method="post" action="/magnets/upload" enctype="multipart/form-data" class="upload-form">
+        <input type="file" name="file" accept=".torrent" required>
+        <button type="submit" class="btn btn-primary">Envoyer</button>
+    </form>
+</div>
+
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% endif %}
+
+{% if downloads %}
+<div class="card">
+    <h2>Téléchargements en cours</h2>
+    <div class="downloads-list">
+        {% for dl in downloads %}
+        {% if dl.state == 'downloading' %}
+        <div class="download-item">
+            <strong>{{ dl.magnet_name }}</strong>
+            <span class="badge badge-downloading">{{ dl.current_file }}/{{ dl.total_files }} fichiers</span>
+            <a href="/magnets/{{ dl.magnet_id }}" class="btn btn-sm">Voir</a>
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<div class="magnets-grid">
+    {% for magnet in magnets %}
+    <div class="card magnet-card">
+        <div class="magnet-header">
+            <h3>{{ magnet.filename }}</h3>
+            <span class="badge badge-{{ magnet.status | lower }}">{{ magnet.status }}</span>
+        </div>
+        <div class="magnet-meta">
+            {% if magnet.size %}
+            <span>{{ (magnet.size / 1073741824) | round(2) }} Go</span>
+            {% endif %}
+        </div>
+        {% if magnet.status == 'Ready' %}
+        <a href="/magnets/{{ magnet.id }}" class="btn btn-primary">Voir les fichiers</a>
+        {% endif %}
+    </div>
+    {% endfor %}
+    {% if not magnets and not error %}
+    <p class="empty">Aucun magnet disponible.</p>
+    {% endif %}
+</div>
+{% endblock %}

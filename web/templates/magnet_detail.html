@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title_suffix %} — {{ magnet.filename if magnet else 'Erreur' }}{% endblock %}
+{% block content %}
+<a href="/magnets" class="back-link">&larr; Retour aux magnets</a>
+
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% endif %}
+
+{% if magnet %}
+<div class="card">
+    <div class="magnet-header">
+        <h1>{{ magnet.filename }}</h1>
+        <span class="badge badge-{{ magnet.status | lower }}">{{ magnet.status }}</span>
+    </div>
+    <div class="magnet-meta">
+        {% if magnet.size %}
+        <span>{{ (magnet.size / 1073741824) | round(2) }} Go</span>
+        {% endif %}
+        <span>{{ files | length }} fichier(s)</span>
+    </div>
+
+    {% if magnet.status == 'Ready' %}
+    <form method="post" action="/magnets/{{ magnet.id }}/download" class="download-form">
+        <button type="submit" class="btn btn-primary btn-lg" id="btn-download">
+            Tout télécharger vers le NAS
+        </button>
+    </form>
+    {% endif %}
+</div>
+
+{% if job %}
+<div class="card" id="progress-card">
+    <div class="progress-header">
+        <h2>Progression du téléchargement</h2>
+        {% if job.state == 'downloading' %}
+        <form method="post" action="/magnets/{{ magnet.id }}/stop" style="margin:0">
+            <button type="submit" class="btn btn-danger btn-sm">Stopper</button>
+        </form>
+        {% endif %}
+    </div>
+    <div class="progress-global">
+        <div class="progress-bar">
+            <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+        </div>
+        <span id="progress-text">Démarrage...</span>
+    </div>
+    <div id="file-list" class="file-progress-list">
+        {% for f in job.files %}
+        <div class="file-item file-{{ f.state }}">
+            <span class="file-path">{{ f.path }}</span>
+            <span class="file-status">{{ f.state }}</span>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<div class="card">
+    <h2>Fichiers</h2>
+    <table class="files-table">
+        <thead>
+            <tr><th>Fichier</th><th>Taille</th></tr>
+        </thead>
+        <tbody>
+            {% for f in files %}
+            <tr>
+                <td>{{ f.path }}</td>
+                <td>{{ (f.size / 1048576) | round(1) }} Mo</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if job and job.state == 'downloading' %}
+<script>
+(function() {
+    const source = new EventSource('/api/downloads/{{ magnet.id }}/progress');
+    const fill = document.getElementById('progress-fill');
+    const text = document.getElementById('progress-text');
+    const fileList = document.getElementById('file-list');
+    const btn = document.getElementById('btn-download');
+
+    source.onmessage = function(e) {
+        const data = JSON.parse(e.data);
+        if (data.state === 'not_found') { source.close(); return; }
+
+        const pct = data.total_files > 0
+            ? Math.round((data.current_file - 1) / data.total_files * 100)
+            : 0;
+
+        // Compute byte-level progress for current file
+        let totalBytes = 0, dlBytes = 0;
+        data.files.forEach(f => { totalBytes += f.size; dlBytes += f.downloaded; });
+        const bytePct = totalBytes > 0 ? Math.round(dlBytes / totalBytes * 100) : pct;
+
+        fill.style.width = bytePct + '%';
+        text.textContent = data.current_file + '/' + data.total_files + ' fichiers — ' + bytePct + '%';
+
+        // Update file list
+        let html = '';
+        data.files.forEach(f => {
+            const cls = 'file-item file-' + f.state;
+            const size = f.size > 0 ? Math.round(f.downloaded / f.size * 100) + '%' : '';
+            html += '<div class="' + cls + '">';
+            html += '<span class="file-path">' + f.path + '</span>';
+            html += '<span class="file-status">' + (f.state === 'downloading' ? size : f.state) + '</span>';
+            html += '</div>';
+        });
+        fileList.innerHTML = html;
+
+        if (data.state === 'completed' || data.state === 'error') {
+            source.close();
+            text.textContent = data.state === 'completed'
+                ? 'Téléchargement terminé !'
+                : 'Erreur : ' + (data.error || 'erreur partielle');
+            fill.style.width = '100%';
+            if (data.state === 'completed') fill.classList.add('progress-done');
+            if (data.state === 'error') fill.classList.add('progress-error');
+            if (btn) btn.disabled = false;
+        }
+    };
+
+    if (btn) btn.disabled = true;
+})();
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title_suffix %} — Connexion{% endblock %}
+{% block content %}
+<div class="card login-card">
+    <h1>Connexion</h1>
+    <p>Entrez votre clé API Alldebrid pour accéder à l'application.</p>
+    {% if error %}
+    <div class="alert alert-error">{{ error }}</div>
+    {% endif %}
+    <form method="post" action="/login">
+        <label for="api_key">Clé API</label>
+        <input type="password" name="api_key" id="api_key" placeholder="Votre clé API Alldebrid" required autofocus>
+        <button type="submit" class="btn btn-primary">Se connecter</button>
+    </form>
+</div>
+{% endblock %}
